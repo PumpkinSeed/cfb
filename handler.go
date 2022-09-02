@@ -4,16 +4,22 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"html/template"
 	"io"
 	"net/http"
 	"net/smtp"
+	"text/template"
 )
 
 var defaultTemplate = `
-	Name: {{.Name}}
-	Email: {{.Email}}
-	Message: {{.Message}}
+	<h1>Someone wants to connect with us!</h1>
+	<ul>
+		<li>Name: <b>{{.Name}}</b></li>
+		<li>Email: <b>{{.Email}}</b></li>
+	</ul>
+	<h3>Message</h3>
+	<p>
+		{{.Message}}
+	</p>
 `
 
 type Configuration struct {
@@ -25,7 +31,8 @@ type Configuration struct {
 	SMTPHost string
 	SMTPPort string
 
-	Subject string
+	Subject  string
+	Template string
 }
 
 type Request struct {
@@ -56,21 +63,29 @@ func Handler(c Configuration) http.HandlerFunc {
 }
 
 func send(c Configuration, r Request) error {
-	emailBody, err := parseTemplate(r)
+	emailBody, err := parseTemplate(c, r)
 	if err != nil {
 		return errors.New("unable to parse email template")
 	}
 
-	mime := "MIME-version: 1.0;\nContent-Type: text/plain; charset=\"UTF-8\";\n\n"
-	subject := "Subject: " + "Contact Form" + "!\n"
+	var s = "Contact Form - " + r.Name
+	if c.Subject != "" {
+		s = c.Subject
+	}
+	mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
+	subject := "Subject: " + s + "!\n"
 	msg := []byte(subject + mime + "\n" + emailBody)
 
 	auth := smtp.PlainAuth("", c.FromEmail, c.FromPassword, c.SMTPHost)
 	return smtp.SendMail(c.SMTPHost+":"+c.SMTPPort, auth, c.FromEmail, c.To, msg)
 }
 
-func parseTemplate(r Request) (string, error) {
-	t, err := template.New("contact_form").Parse(defaultTemplate)
+func parseTemplate(c Configuration, r Request) (string, error) {
+	var templateUsed = defaultTemplate
+	if c.Template != "" {
+		templateUsed = c.Template
+	}
+	t, err := template.New("contact_form").Parse(templateUsed)
 	if err != nil {
 		return "", err
 	}
