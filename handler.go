@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/smtp"
 	"text/template"
@@ -33,6 +34,8 @@ type Configuration struct {
 
 	Subject  string
 	Template string
+
+	ErrorLogging bool
 }
 
 type Request struct {
@@ -49,16 +52,19 @@ func Handler(c Configuration) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reqBodyRaw, err := io.ReadAll(r.Body)
 		if err != nil {
-			errorResponse(w, "invalid request body")
+			errorResponse(w, err, "invalid request body", c)
 		}
 
 		var reqBody Request
 		err = json.Unmarshal(reqBodyRaw, &reqBody)
 		if err != nil {
-			errorResponse(w, "invalid request body")
+			errorResponse(w, err, "invalid request body", c)
 		}
 
-		send(c, reqBody)
+		err = send(c, reqBody)
+		if err != nil {
+			errorResponse(w, err, "invalid request body", c)
+		}
 	}
 }
 
@@ -97,7 +103,10 @@ func parseTemplate(c Configuration, r Request) (string, error) {
 	return body, nil
 }
 
-func errorResponse(w http.ResponseWriter, message string) {
+func errorResponse(w http.ResponseWriter, err error, message string, c Configuration) {
+	if c.ErrorLogging {
+		log.Print(err)
+	}
 	w.WriteHeader(http.StatusBadRequest)
 	raw, _ := json.Marshal(Error{
 		Message: message,
